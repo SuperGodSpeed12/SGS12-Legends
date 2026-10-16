@@ -196,8 +196,11 @@ export class Game {
       this.screenTransition -= dt;
     }
 
-    // Camera hit-stop freezes game updates
-    if (this.camera.isFrozen) return;
+    // Camera hit-stop: decrement freeze timer but skip world updates while frozen
+    if (this.camera.isFrozen) {
+      this.camera.tickFreeze(dt);
+      return;
+    }
 
     this.gameTime += dt;
     if (this.modeSwitchCooldown > 0) this.modeSwitchCooldown -= dt;

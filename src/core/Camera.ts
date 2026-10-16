@@ -27,15 +27,17 @@ export class Camera {
     this.freezeTime = Math.max(this.freezeTime, duration);
   }
 
+  tickFreeze(dt: number) {
+    if (this.freezeTime > 0) this.freezeTime -= dt;
+  }
+
   get isFrozen(): boolean {
     return this.freezeTime > 0;
   }
 
   update(dt: number, targetX: number, targetY: number, worldW: number, worldH: number) {
-    if (this.freezeTime > 0) {
-      this.freezeTime -= dt;
-      return;
-    }
+    this.tickFreeze(dt);
+    if (this.freezeTime > 0) return;
 
     const lookAheadX = 80;
     const targetCamX = targetX - this.viewW / 2 / this.zoom + lookAheadX;

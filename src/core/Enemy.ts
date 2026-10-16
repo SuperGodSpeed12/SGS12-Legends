@@ -830,8 +830,6 @@ export class Enemy {
     this.y = clamp(this.y, level.bounds.y, level.bounds.y + level.bounds.h - this.h);
   }
 
-  // Render stays mostly the same – just use this.anim.key / this.anim.frame
-  // when you switch to real sprite sheets later.
   render(ctx: CanvasRenderingContext2D, camX: number, camY: number, zoom: number, mode: RenderMode) {
     if (!this.alive) return;
 
@@ -854,14 +852,137 @@ export class Enemy {
       ctx.globalAlpha = 1;
     }
 
-    const sx = (this.x - camX) * zoom + (this.anim.offset.x * zoom);
-    const sy = (this.y - camY) * zoom + (this.anim.offset.y * zoom);
-    const sw = this.w * zoom * this.anim.scale;
-    const sh = this.h * zoom * this.anim.scale;
+    const sx = (this.x - camX) * zoom;
+    const sy = (this.y - camY) * zoom;
+    const sw = this.w * zoom;
+    const sh = this.h * zoom;
 
-    // ... (rest of your existing render code stays the same)
-    // When you have sprite sheets, use:
-    //   drawSprite(ctx, this.anim.key, this.anim.frame, sx, sy, sw, sh, this.facing)
+    if (this.state === "staggered") {
+      ctx.save();
+      ctx.globalAlpha = 0.5 + Math.sin(this.animTime * 15) * 0.3;
+    }
+
+    let bodyColor = "#ff4400";
+    let edgeColor = "#ff8844";
+    if (this.type === "shooter") {
+      bodyColor = "#ff8800";
+      edgeColor = "#ffcc00";
+    } else if (this.type === "hazard") {
+      bodyColor = "#ff0066";
+      edgeColor = "#ff44aa";
+    } else if (this.type === "boss") {
+      const shield = this.bossRuntime?.coreShield ?? 0;
+      bodyColor = shield > 0 ? "#aa00ff" : "#ff0044";
+      edgeColor = "#ff44ff";
+    }
+
+    if (mode === "wireframe") {
+      ctx.strokeStyle = bodyColor;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, sw, sh);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + sw, sy + sh);
+      ctx.moveTo(sx + sw, sy);
+      ctx.lineTo(sx, sy + sh);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = this.hitFlash > 0 ? "#ffffff" : bodyColor;
+      ctx.fillRect(sx, sy, sw, sh);
+      ctx.strokeStyle = edgeColor;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx, sy, sw, sh);
+
+      // Eyes
+      ctx.fillStyle = "#000";
+      const eyeW = sw * 0.15;
+      const eyeH = sh * 0.1;
+      const eyeY = sy + sh * 0.25;
+      if (this.facing > 0) ctx.fillRect(sx + sw * 0.6, eyeY, eyeW, eyeH);
+      else ctx.fillRect(sx + sw * 0.25, eyeY, eyeW, eyeH);
+
+      if (this.type === "shooter" && this.attackCooldown < 0.3) {
+        ctx.fillStyle = "#ffff00";
+        ctx.fillRect(sx + sw * 0.4, sy + sh * 0.5, sw * 0.2, sh * 0.1);
+      }
+
+      if (this.type === "hazard") {
+        ctx.fillStyle = "#ff0066";
+        for (let i = 0; i < 4; i++) {
+          const spikeX = sx + (i + 0.5) * (sw / 4);
+          ctx.beginPath();
+          ctx.moveTo(spikeX - 4, sy);
+          ctx.lineTo(spikeX, sy - 8 * zoom);
+          ctx.lineTo(spikeX + 4, sy);
+          ctx.fill();
+        }
+      }
+
+      if (this.type === "boss") {
+        const shield = this.bossRuntime?.coreShield ?? 0;
+        if (shield > 0) {
+          ctx.strokeStyle = "rgba(170,0,255,0.4)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(sx + sw / 2, sy + sh / 2, sw * 0.7, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        const coreOpen = this.bossRuntime?.coreOpenFrames ?? 0;
+        if (coreOpen > 0 || this.state === "staggered") {
+          ctx.fillStyle = "#00ffff";
+          const coreSize = 8 * zoom + Math.sin(this.animTime * 8) * 2;
+          ctx.beginPath();
+          ctx.arc(sx + sw / 2, sy + sh / 2, coreSize, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = "#ff44ff";
+        ctx.font = `${10 * zoom}px "Share Tech Mono"`;
+        ctx.textAlign = "center";
+        ctx.fillText(`P${(this.bossRuntime?.phaseIndex ?? 0) + 1}`, sx + sw / 2, sy - 6);
+      }
+    }
+
+    if (this.state === "staggered") ctx.restore();
+
+    if (this.canBeExecuted()) {
+      const cx = sx + sw / 2;
+      const cy = sy + sh / 2;
+      const len = Math.max(sw, sh) * 0.8;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(this.addressLine);
+      ctx.globalAlpha = 0.6 + Math.sin(this.animTime * 10) * 0.3;
+      ctx.strokeStyle = "#00ffff";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 4]);
+      ctx.beginPath();
+      ctx.moveTo(-len, 0);
+      ctx.lineTo(len, 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = "#00ffff";
+      ctx.font = `${10 * zoom}px "Share Tech Mono"`;
+      ctx.textAlign = "center";
+      ctx.fillText("EXEC", cx, sy - 4);
+      ctx.globalAlpha = 1;
+    }
+
+    if (this.type !== "hazard" && this.hp < this.maxHP) {
+      const barW = sw;
+      const barH = this.type === "boss" ? 6 * zoom : 3 * zoom;
+      const barX = sx;
+      const barY = sy - barH - 2;
+      ctx.fillStyle = "#330000";
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = this.type === "boss" ? "#ff44ff" : "#ff4444";
+      ctx.fillRect(barX, barY, barW * (this.hp / this.maxHP), barH);
+      if (this.type === "boss" && this.bossRuntime && this.bossRuntime.coreShield > 0) {
+        ctx.fillStyle = "#aa00ff";
+        ctx.fillRect(barX, barY - barH - 2, barW * (this.bossRuntime.coreShield / (this.bossRuntime.maxHealth > 0 ? this.bossRuntime.maxHealth : 100)), barH);
+      }
+    }
   }
 }
 
